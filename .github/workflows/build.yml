@@ -356,3 +356,17 @@ jobs:
         with:
           name: qt_build
           path: out
+  notify:
+    runs-on: ubuntu-latest
+    needs: [ ios, android, web, win, linux, qt ]
+    steps:
+      - name: Send Webhook Notification
+        run: |
+          curl -X POST -H "Content-Type: application/json" \
+          -d '{
+                "msgtype": "text",
+                "text": {
+                  "content": "仓库 ${{ github.repository }} 的构建和测试已完成。"
+                }
+              }' \
+          https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${{ secrets.WECHAT_WEBHOOK_KEY }}
