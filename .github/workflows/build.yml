@@ -15,11 +15,6 @@ jobs:
         with:
           lfs: true
 
-      - name: Remove Environment Variable
-        run: |
-          unset build
-        shell: bash
-
       - name: Get Environment Cache
         id: environment-cache
         uses: actions/cache/restore@v4
