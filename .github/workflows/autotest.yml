@@ -1,4 +1,4 @@
-name: autotest
+name: build
 
 on:
   pull_request:
@@ -7,15 +7,18 @@ on:
     branches: [ main ]
 
 jobs:
-  mac:
-    # the macos-latest may randomly give us macos-12.6.9 or macos-12.7.0 which may break the autotest.
-    runs-on: macos-13
+  ios:
+    runs-on: macos-latest
     steps:
       - name: Check Out Repo
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
           lfs: true
+
+      - name: Remove Environment Variable
+        run: |
+          unset autotest
+        shell: bash
 
       - name: Get Environment Cache
         id: environment-cache
@@ -27,15 +30,8 @@ jobs:
             /usr/local/bin/ninja
             /usr/local/Cellar/yasm
             /usr/local/bin/yasm
-            /usr/local/Cellar/gcovr
-            /usr/local/bin/gcovr
-            /usr/local/Cellar/python-lxml
-            /usr/local/Cellar/python-markupsafe
-            /usr/local/lib/python3.12/site-packages/gcovr
-            /usr/local/lib/python3.12/site-packages/lxml
-            /usr/local/lib/python3.12/site-packages/markupsafe
-          key: tgfx-environment-autotest-20231129
-          restore-keys: tgfx-environment-autotest-
+          key: tgfx-environment-ios-20231129
+          restore-keys: tgfx-environment-ios-
 
       - name: Get Third-Party Cache
         id: third-party-cache
@@ -43,9 +39,14 @@ jobs:
         with:
           path: |
             third_party
-            test/baseline/.cache
-          key: third-party-autotest-${{ hashFiles('DEPS') }}-${{ hashFiles('vendor.json') }}-${{ hashFiles('test/baseline/version.json') }}
-          restore-keys: third-party-autotest-
+          key: third-party-ios-${{ hashFiles('DEPS') }}-${{ hashFiles('vendor.json') }}
+          restore-keys: third-party-ios-
+
+      - name: Install Build Tools
+        run: |
+          chmod +x install_tools.sh
+          ./install_tools.sh
+        shell: bash
 
       - name: Run depsync
         run: |
@@ -53,27 +54,11 @@ jobs:
           depsync
         shell: bash
 
-      - name: Check Code Format
+      - name: Build iOS
         run: |
-          chmod +x codeformat.sh
-          ./codeformat.sh
-        shell: bash
-
-      - name: Run Autotest
-        run: |
-          chmod +x autotest.sh
-          ./autotest.sh
-
-      - name: Run Codecov
-        run: |
-          chmod +x codecov.sh
-          ./codecov.sh
-
-      - name: Upload Codecov
-        uses: codecov/codecov-action@v4
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          file: result/coverage.xml
+          cd ios
+          node gen_ios
+          xcodebuild -workspace Hello2D.xcworkspace -scheme Hello2D -configuration Release -sdk iphoneos -arch arm64 CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
 
       - name: Save Environment Cache
         if: ${{ (github.event_name == 'push') && (steps.environment-cache.outputs.cache-hit != 'true') }}
@@ -85,14 +70,7 @@ jobs:
             /usr/local/bin/ninja
             /usr/local/Cellar/yasm
             /usr/local/bin/yasm
-            /usr/local/Cellar/gcovr
-            /usr/local/bin/gcovr
-            /usr/local/Cellar/python-lxml
-            /usr/local/Cellar/python-markupsafe
-            /usr/local/lib/python3.12/site-packages/gcovr
-            /usr/local/lib/python3.12/site-packages/lxml
-            /usr/local/lib/python3.12/site-packages/markupsafe
-          key: tgfx-environment-autotest-20231129
+          key: tgfx-environment-ios-20231129
 
       - name: Save Third-Party Cache
         if: ${{ (github.event_name == 'push') && (steps.third-party-cache.outputs.cache-hit != 'true') }}
@@ -100,17 +78,11 @@ jobs:
         with:
           path: |
             third_party
-            test/baseline/.cache
-          key: third-party-autotest-${{ hashFiles('DEPS') }}-${{ hashFiles('vendor.json') }}-${{ hashFiles('test/baseline/version.json') }}
+          key: third-party-ios-${{ hashFiles('DEPS') }}-${{ hashFiles('vendor.json') }}
 
       - name: Job Failed
         if: ${{ failure() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v3
         with:
-          name: result
-          path: result
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: result
-          path: result
+          name: ios_build
+          path: ios
