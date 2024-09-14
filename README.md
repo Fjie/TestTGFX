@@ -16,7 +16,7 @@ originally designed to serve as the default graphics engine for the [PAG](https:
 starting from version 4.0. Its main objective is to offer a compelling alternative to the Skia graphics
 library while maintaining a much smaller binary size. Over time, it has found its way into many other
 products, such as [Hippy](https://github.com/Tencent/Hippy), [Tencent Docs](https://docs.qq.com) and
-various video-editing apps. xxx
+various video-editing apps. xxx 嘻嘻嘻
 
 ## Platform Support
 
