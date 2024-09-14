@@ -11,6 +11,7 @@ on:
 jobs:
   notify:
     runs-on: ubuntu-latest
+    if: ${{ success() }}
     steps:
       - name: Send Both Complete Notification
         run: |
