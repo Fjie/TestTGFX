@@ -19,7 +19,32 @@ jobs:
           if [[ "${{ env.build_complete }}" == "true" && "${{ env.autotest_complete }}" == "true" ]]; then
             echo "both_complete=true" >> $GITHUB_ENV
           fi
-      - name: Send Webhook Notification
+
+      - name: Send build_complete Notification
+        if: github.event.action == 'build_complete'
+        run: |
+          curl -X POST -H "Content-Type: application/json" \
+          -d '{
+                "msgtype": "text",
+                "text": {
+                  "content": "仓库 ${{ github.repository }} 的构建已完成。"
+                }
+              }' \
+          https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${{ secrets.WECHAT_WEBHOOK_KEY }}
+
+      - name: Send autotest_complete Notification
+        if: github.event.action == 'autotest_complete'
+        run: |
+          curl -X POST -H "Content-Type: application/json" \
+          -d '{
+                "msgtype": "text",
+                "text": {
+                  "content": "仓库 ${{ github.repository }} 的自动测试已完成。"
+                }
+              }' \
+          https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${{ secrets.WECHAT_WEBHOOK_KEY }}
+
+      - name: Send Both Complete Notification
         if: env.both_complete == 'true'
         run: |
           curl -X POST -H "Content-Type: application/json" \
