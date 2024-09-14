@@ -16,6 +16,10 @@ jobs:
         with:
           fetch-depth: 0
           lfs: true
+      - name: Set Environment Variable
+        run: |
+          echo "autotest=begin" >> $GITHUB_ENV
+        shell: bash
 
       - name: Get Environment Cache
         id: environment-cache
