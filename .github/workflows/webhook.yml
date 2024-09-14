@@ -11,15 +11,26 @@ on:
 jobs:
   notify:
     runs-on: ubuntu-latest
-    if: ${{ success() }}
     steps:
-      - name: Send Both Complete Notification
+      - name: Check Workflows Status
+        id: check_status
         run: |
+          autotest_status=$(gh run list --workflow=autotest --branch=main --json conclusion -q '.[0].conclusion')
+          build_status=$(gh run list --workflow=build --branch=main --json conclusion -q '.[0].conclusion')
+          echo "autotest=$autotest_status" >> $GITHUB_ENV
+          echo "build=$build_status" >> $GITHUB_ENV
+
+      - name: Send Both Complete Notification
+        if: ${{ env.autotest == 'success' && env.build == 'success' }}
+        run: |
+          REPO_NAME=${{ github.repository }}
+          COMMIT_SHA=${{ github.sha }}
+          COMMIT_URL="https://github.com/${REPO_NAME}/commit/${COMMIT_SHA}"
           curl -X POST -H "Content-Type: application/json" \
-          -d '{
-                "msgtype": "text",
-                "text": {
-                  "content": "仓库 ${{ github.repository }} 的构建和测试已完成。\n提交人: ${{ github.actor }}\nPR URL: ${{ github.event.pull_request.html_url }}"
+          -d "{
+                \"msgtype\": \"text\",
+                \"text\": {
+                  \"content\": \"仓库 ${REPO_NAME} 的构建和测试已完成。\n查看提交: ${COMMIT_URL}\"
                 }
-              }' \
+              }" \
           https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${{ secrets.WECHAT_WEBHOOK_KEY }}
