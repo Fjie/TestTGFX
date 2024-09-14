@@ -28,7 +28,7 @@ jobs:
           build_status=$(gh run list --repo ${{ github.repository }} --workflow=build --branch=main --json conclusion -q '.[0].conclusion')
           echo "autotest=$autotest_status" >> $GITHUB_ENV
           echo "build=$build_status" >> $GITHUB_ENV
-
+          cat $GITHUB_ENV
       - name: Send Both Complete Notification
         if: ${{ env.autotest == 'success' && env.build == 'success' }}
         run: |
