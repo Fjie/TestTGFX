@@ -14,8 +14,6 @@ jobs:
     steps:
       - name: Check Workflows Status
         id: check_status
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           autotest_status=$(gh run list --workflow=autotest --branch=main --json conclusion -q '.[0].conclusion')
           build_status=$(gh run list --workflow=build --branch=main --json conclusion -q '.[0].conclusion')
@@ -29,10 +27,10 @@ jobs:
           COMMIT_SHA=${{ github.sha }}
           COMMIT_URL="https://github.com/${REPO_NAME}/commit/${COMMIT_SHA}"
           curl -X POST -H "Content-Type: application/json" \
-          -d "{
-                \"msgtype\": \"text\",
-                \"text\": {
-                  \"content\": \"仓库 ${REPO_NAME} 的构建和测试已完成。\n查看提交: ${COMMIT_URL}\"
+          -d '{
+                "msgtype": "text",
+                "text": {
+                  "content": "仓库 '${REPO_NAME}' 的构建和测试已完成。\n查看提交: '${COMMIT_URL}'"
                 }
-              }" \
+              }' \
           https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${{ secrets.WECHAT_WEBHOOK_KEY }}
