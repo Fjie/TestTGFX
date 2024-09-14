@@ -43,7 +43,7 @@ various video-editing apps. xxx
 - The `main` branch is our active developing branch which contains the latest features and bugfixes.
 - The branches under `release/` are our stable milestone branches which are fully tested. We will
   periodically cut a `release/{version}` branch from the `main` branch. After one `release/{version}`
-  branch is cut, only high-priority fixes are checked into it.
+  branch is cut, only high-priority fixes are checked into it. xx
 
 ## Build Prerequisites
 
