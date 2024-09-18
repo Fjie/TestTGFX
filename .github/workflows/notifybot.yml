@@ -77,7 +77,32 @@ jobs:
           # 设置输出变量
           echo "filtered_workflows=$REQUIRED_WORKFLOWS" >> $GITHUB_OUTPUT
 
-      # 步骤 4：轮询检查指定工作流状态并发送通知
+      # 步骤 4：发送新 PR 的初始通知
+      - name: Send Initial PR Notification
+        env:
+          EVENT_TITLE: ${{ env.EVENT_TITLE }}
+          PR_NUMBER: ${{ env.PR_NUMBER }}
+          REPO_NAME: ${{ env.REPO_NAME }}
+          REPO_OWNER: ${{ env.REPO_OWNER }}
+
+        run: |
+          curl -X POST -H "Content-Type: application/json" \
+          -d "{
+                \"msgtype\": \"text\",
+                \"text\": {
+                  \"content\": \"仓库 '${REPO_NAME}' 有新的的 PR #${PR_NUMBER}：'${EVENT_TITLE}' 需要评审。\n请查看: https://github.com/${REPO_OWNER}/${REPO_NAME}/pull/${PR_NUMBER}\"
+                }
+              }" \
+          "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${WECHAT_WEBHOOK_KEY}"
+        shell: bash
+
+      # 步骤 5：等待 60 秒
+      - name: Wait Before Starting Polling
+        run: |
+          echo "等待 60 秒后开始轮询工作流状态..."
+          sleep 60
+
+      # 步骤 6：轮询检查指定工作流状态并发送通知
       - name: Poll Workflow Status and Send Notifications
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
