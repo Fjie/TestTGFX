@@ -61,7 +61,7 @@ jobs:
             echo "Associated workflows:"
             echo "$associated_workflows"
           fi
-      
+          
           # 从 REQUIRED_WORKFLOWS 中移除 associated_workflows 中没有的项
           IFS=',' read -ra REQUIRED_WORKFLOWS_ARRAY <<< "$REQUIRED_WORKFLOWS"
           filtered_workflows=()
@@ -137,9 +137,27 @@ jobs:
             # 根据当前工作流状态决定下一步动作
             if [ "$all_success" = true ]; then
               echo "所有监控的工作流都已成功完成。"
+              # 发送成功通知
+              curl -X POST -H "Content-Type: application/json" \
+              -d '{
+                    "msgtype": "text",
+                    "text": {
+                      "content": "仓库 '`${REPO_NAME}`' 的构建和测试已成功完成。\n标题: '`${EVENT_TITLE}`'\n请及时合入: `https://github.com/'`${REPO_OWNER}`'/'`${REPO_NAME}`'/pull/'`${PR_NUMBER}`'`"
+                    }
+                  }' \
+              "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${WECHAT_WEBHOOK_KEY}"
               break
             elif [ "$any_failure" = true ]; then
               echo "检测到至少一个工作流失败或需要人工干预。"
+              # 发送失败通知
+              curl -X POST -H "Content-Type: application/json" \
+              -d '{
+                    "msgtype": "text",
+                    "text": {
+                      "content": "仓库 '`${REPO_NAME}`' 的构建和测试失败。\n标题: '`${EVENT_TITLE}`'\n请检查详细日志: `https://github.com/'`${REPO_OWNER}`'/'`${REPO_NAME}`'/pull/'`${PR_NUMBER}`'`"
+                    }
+                  }' \
+              "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${WECHAT_WEBHOOK_KEY}"
               failure=true
               break
             else
@@ -152,51 +170,22 @@ jobs:
           PR_URL="https://github.com/$REPO_OWNER/$REPO_NAME/pull/$PR_NUMBER"
 
           if [ "$all_success" = true ]; then
-            echo "发送成功完成的通知到 Webhook。"
-            payload=$(jq -n \
-              --arg msgtype "text" \
-              --arg content $'仓库 "'$REPO_OWNER'/'$REPO_NAME'" 的构建和测试已成功完成。\n标题: "'$EVENT_TITLE'"\n请及时合入: "'$PR_URL'"' \
-              '{
-                msgtype: $msgtype,
-                text: {
-                  content: $content
-                }
-              }')
-            echo "Payload: $payload"  # 调试输出
-            curl -X POST -H "Content-Type: application/json" \
-              -d "$payload" \
-              "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${WECHAT_WEBHOOK_KEY}"
+            # 已在上方发送成功通知
+            exit 0
           elif [ "$failure" = true ]; then
-            echo "发送失败的通知到 Webhook。"
-            payload=$(jq -n \
-              --arg msgtype "text" \
-              --arg content $'仓库 "'$REPO_OWNER'/'$REPO_NAME'" 的构建和测试失败。\n标题: "'$EVENT_TITLE'"\n请检查详细日志: "'$PR_URL'"' \
-              '{
-                msgtype: $msgtype,
-                text: {
-                  content: $content
-                }
-              }')
-            echo "Payload: $payload"  # 调试输出
-            curl -X POST -H "Content-Type: application/json" \
-              -d "$payload" \
-              "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${WECHAT_WEBHOOK_KEY}"
+            # 已在上方发送失败通知
+            exit 1
           else
             echo "在最大尝试次数内未检测到工作流的完成状态。"
-            # 可选：发送超时通知
-            payload=$(jq -n \
-              --arg msgtype "text" \
-              --arg content $'仓库 "'$REPO_OWNER'/'$REPO_NAME'" 的构建和测试检查超时。\n标题: "'$EVENT_TITLE'"\n请手动检查相关工作流。' \
-              '{
-                msgtype: $msgtype,
-                text: {
-                  content: $content
-                }
-              }')
-            echo "Payload: $payload"  # 调试输出
+            # 发送超时通知
             curl -X POST -H "Content-Type: application/json" \
-              -d "$payload" \
-              "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${WECHAT_WEBHOOK_KEY}"
+            -d '{
+                  "msgtype": "text",
+                  "text": {
+                    "content": "仓库 '`${REPO_NAME}`' 的构建和测试检查超时。\n标题: '`${EVENT_TITLE}`'\n请手动检查相关工作流。"
+                  }
+                }' \
+            "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${WECHAT_WEBHOOK_KEY}"
             exit 1
           fi
         shell: bash
