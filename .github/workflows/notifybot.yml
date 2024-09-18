@@ -28,8 +28,11 @@ jobs:
           echo "WECHAT_WEBHOOK_KEY=${{ secrets.WECHAT_WEBHOOK_KEY }}" >> $GITHUB_ENV
 
           # 设置轮询参数
-          echo "MAX_ATTEMPTS=30" >> $GITHUB_ENV            # 最大尝试次数
+          echo "MAX_ATTEMPTS=30" >> $GITHUB_ENV            # 最大尝试次数（例如 30 次 ~ 30 分钟）
           echo "SLEEP_DURATION=60" >> $GITHUB_ENV         # 每次轮询的等待时间（秒）
+
+          # 设置需要排除的工作流名称（即协调工作流本身）
+          echo "EXCLUDE_WORKFLOW=Coordinator Workflow" >> $GITHUB_ENV
 
       # 步骤 2：安装必要的依赖工具
       - name: Install Dependencies
@@ -47,30 +50,27 @@ jobs:
           WECHAT_WEBHOOK_KEY: ${{ env.WECHAT_WEBHOOK_KEY }}
           MAX_ATTEMPTS: ${{ env.MAX_ATTEMPTS }}
           SLEEP_DURATION: ${{ env.SLEEP_DURATION }}
+          EXCLUDE_WORKFLOW: ${{ env.EXCLUDE_WORKFLOW }}
         run: |
           attempt=0
           success=true  # 假设开始时所有工作流都成功
           failure=false
           declare -A WORKFLOW_STATUS
 
-          # 获取所有与此 PR 关联的工作流运行，优先使用 check-runs
-          response=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-            "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/pulls/$PR_NUMBER/check-runs")
+          # 获取所有与此 PR 关联的 workflow runs
+          runs=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+            "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/actions/runs?pull_requests=$PR_NUMBER&per_page=100")
 
-          # 提取所有相关工作流的名称
-          workflows=$(echo "$response" | jq -r '.check_runs[] | select(.app.name != "GitHub Actions") | .app.name' | sort | uniq)
+          # 提取所有相关工作流的名称，排除协调工作流自身
+          workflows=$(echo "$runs" | jq -r --arg EXCLUDE "$EXCLUDE_WORKFLOW" '
+            .workflow_runs[] 
+            | select(.name != $EXCLUDE) 
+            | .name
+            ' | sort | uniq)
 
-          # 如果没有获取到任何工作流名称，尝试使用 workflow_runs
-          if [ -z "$workflows" ]; then
-            workflows=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-              "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/actions/runs?pull_requests=$PR_NUMBER&per_page=100" | \
-              jq -r '.workflow_runs[].name' | sort | uniq)
-          fi
-
-          # 如果仍然为空，提示用户手动指定
+          # 如果没有获取到任何工作流名称，提示用户手动指定
           if [ -z "$workflows" ]; then
             echo "未能自动检测到与 PR 关联的工作流名称。请手动指定工作流名称。"
-            echo "请输入工作流名称，用逗号分隔：" >&2
             exit 1
           fi
 
@@ -93,17 +93,21 @@ jobs:
               workflow_run=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
                 "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/actions/runs?pull_requests=$PR_NUMBER&per_page=1&workflow_name=${workflow}")
 
-              conclusion=$(echo "$workflow_run" | jq -r '.workflow_runs[0].conclusion')
-
-              # 更新工作流状态
-              WORKFLOW_STATUS["$workflow"]="$conclusion"
+              conclusion=$(echo "$workflow_run" | jq -r '.workflow_runs[0].conclusion // "null"')
 
               echo "Workflow \"$workflow\" 状态: $conclusion"
 
-              if [[ "$conclusion" == "failure" || "$conclusion" == "cancelled" ]]; then
+              if [[ "$conclusion" == "success" ]]; then
+                # 工作流成功，无需更改标志
+                :
+              elif [[ "$conclusion" == "failure" || "$conclusion" == "cancelled" ]]; then
                 any_failure=true
                 all_success=false
-              elif [[ "$conclusion" != "success" && "$conclusion" != "null" ]]; then
+              elif [[ "$conclusion" == "null" ]]; then
+                # 工作流尚未完成
+                all_success=false
+              else
+                # 其他结论状态，如 "timed_out", "action_required" 等
                 all_success=false
               fi
             done < workflows.txt
