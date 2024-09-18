@@ -13,11 +13,11 @@ jobs:
     env:
       PR_NUMBER: ${{ github.event.pull_request.number }}
       REPO_OWNER: ${{ github.repository_owner }}
-      REPO_NAME: ${{ github.repository }}
+      REPO_NAME: ${{ github.event.repository.name }} # 修正这里，确保只包含仓库名称
       EVENT_TITLE: ${{ github.event.pull_request.title }}
       WECHAT_WEBHOOK_KEY: ${{ secrets.WECHAT_WEBHOOK_KEY }}
-      MAX_ATTEMPTS: 30             # 最大尝试次数（例如 30 次 ~ 30 分钟）
-      SLEEP_DURATION: 60          # 每次轮询的等待时间（秒）
+      MAX_ATTEMPTS: 30               # 最大尝试次数（例如 30 次 ~ 30 分钟）
+      SLEEP_DURATION: 60            # 每次轮询的等待时间（秒）
       REQUIRED_WORKFLOWS: "build,autotest" # 需要监控的工作流名称，以逗号分隔
       HEAD_REF: ${{ github.event.pull_request.head.ref }}
 
@@ -44,7 +44,13 @@ jobs:
           echo "Fetching all workflows associated with PR #$PR_NUMBER on branch $HEAD_REF..."
 
           # 使用 GitHub CLI 获取指定分支上的所有工作流运行
-          workflow_runs=$(gh api "repos/$REPO_OWNER/$REPO_NAME/actions/runs?branch=$HEAD_REF&per_page=100")
+          workflow_runs=$(gh api "repos/$REPO_OWNER/$REPO_NAME/actions/runs?branch=$HEAD_REF&per_page=100" || echo "{}")
+
+          # 检查 API 请求是否成功
+          if [ "$workflow_runs" = "{}" ]; then
+            echo "Failed to fetch workflow runs. Please check repository name and permissions."
+            exit 1
+          fi
 
           # 提取工作流名称并去重
           associated_workflows=$(echo "$workflow_runs" | jq -r '.workflow_runs[].name' | sort | uniq)
@@ -87,15 +93,15 @@ jobs:
               echo "正在检查工作流 \"$workflow\" 的最新运行状态..."
 
               # 使用 GitHub CLI 获取特定工作流的最新运行
-              workflow_run=$(gh api "repos/$REPO_OWNER/$REPO_NAME/actions/workflows/$workflow.yml/runs?branch=$HEAD_REF&per_page=1" --jq '.workflow_runs[0]')
+              workflow_run=$(gh api "repos/$REPO_OWNER/$REPO_NAME/actions/workflows/$workflow.yml/runs?branch=$HEAD_REF&per_page=1" --jq '.workflow_runs[0]' || echo "{}")
 
-              if [ -z "$workflow_run" ]; then
+              if [ "$workflow_run" = "{}" ]; then
                 echo "工作流 \"$workflow\" 尚未启动运行。"
                 all_success=false
                 continue
               fi
 
-              # 提取结论状态，如果没有运行则为 "no_run"
+              # 提取结论状态和当前状态
               conclusion=$(echo "$workflow_run" | jq -r '.conclusion // "no_run"')
               status=$(echo "$workflow_run" | jq -r '.status')
 
