@@ -10,18 +10,45 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 步骤 1：初始化变量
-      - name: Initialize Variables
+      # 步骤 1：初始化变量并手动指定监控的工作流
+      - name: Initialize Variables and Define Monitored Workflows
         id: vars
         run: |
+          # 获取 PR 编号
           echo "PR_NUMBER=${{ github.event.pull_request.number }}" >> $GITHUB_ENV
+
+          # 获取仓库所有者和名称
           echo "REPO_OWNER=${{ github.repository_owner }}" >> $GITHUB_ENV
           echo "REPO_NAME=${GITHUB_REPOSITORY##*/}" >> $GITHUB_ENV
+
+          # 获取 PR 目标分支
           echo "TARGET_BRANCH=${{ github.event.pull_request.base.ref }}" >> $GITHUB_ENV
+
+          # 获取 PR 标题并设置为 EVENT_TITLE
           echo "EVENT_TITLE=$(jq --raw-output .pull_request.title $GITHUB_EVENT_PATH)" >> $GITHUB_ENV
+
+          # 设置 Webhook Key（保存在 GitHub Secrets 中）
           echo "WECHAT_WEBHOOK_KEY=${{ secrets.WECHAT_WEBHOOK_KEY }}" >> $GITHUB_ENV
-          echo "MAX_ATTEMPTS=30" >> $GITHUB_ENV            # 最大尝试次数，例如 30 次 ~ 30 分钟
+
+          # 设置轮询参数
+          echo "MAX_ATTEMPTS=30" >> $GITHUB_ENV            # 最大尝试次数（例如 30 次 ~ 30 分钟）
           echo "SLEEP_DURATION=60" >> $GITHUB_ENV         # 每次轮询的等待时间（秒）
+
+          # 设置需要排除的工作流名称（即协调工作流自身）
+          echo "EXCLUDE_WORKFLOW=notifybot" >> $GITHUB_ENV
+
+          # 手动指定需要监控的工作流名称，以逗号分隔
+          # 例如: "build-and-test,lint,deploy"
+          REQUIRED_WORKFLOWS="build,autotest"
+          echo "REQUIRED_WORKFLOWS=${REQUIRED_WORKFLOWS}" >> $GITHUB_ENV
+
+          # 将手动指定的工作流名称保存到 workflows.txt
+          # 将逗号分隔的字符串转为逐行写入
+          IFS=',' read -ra WORKFLOWS <<< "$REQUIRED_WORKFLOWS"
+          > workflows.txt
+          for workflow in "${WORKFLOWS[@]}"; do
+            echo "$workflow" >> workflows.txt
+          done
 
       # 步骤 2：安装必要的依赖工具
       - name: Install Dependencies
@@ -29,37 +56,55 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y jq curl
 
-      # 步骤 3：获取分支保护规则中的必需状态检查
-      - name: Fetch Required Status Checks
-        id: fetch_checks
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO_OWNER: ${{ env.REPO_OWNER }}
-          REPO_NAME: ${{ env.REPO_NAME }}
-          TARGET_BRANCH: ${{ env.TARGET_BRANCH }}
+      # 步骤 3：自动获取并打印与 PR 关联的所有工作流
+      - name: Fetch and Print Associated Workflows
         run: |
-          echo "Fetching branch protection for $REPO_OWNER/$REPO_NAME:$TARGET_BRANCH..."
-          
-          # 获取分支保护规则
-          protection_response=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-            "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/branches/$TARGET_BRANCH/protection")
+          echo "Fetching all workflows associated with PR #$PR_NUMBER..."
 
-          # 提取必需的状态检查名称
-          required_checks=$(echo "$protection_response" | jq -r '.required_status_checks.contexts // empty')
+          # 获取所有与此 PR 关联的工作流运行，优先使用 check-runs
+          response=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+            "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/pulls/$PR_NUMBER/check-runs")
 
-          if [ -z "$required_checks" ]; then
-            echo "未找到分支保护规则中的必需状态检查。请确保分支保护规则配置正确。"
-            exit 1
+          # 提取所有相关工作流的名称，排除 EXCLUDE_WORKFLOW 和 "GitHub Actions"
+          associated_workflows=$(echo "$response" | jq -r --arg exclude "$EXCLUDE_WORKFLOW" '
+            .check_runs[] |
+            select(.app.name != "GitHub Actions" and .app.name != $exclude) |
+            .app.name' | sort | uniq)
+
+          # 如果没有获取到任何工作流名称，尝试使用 workflow_runs
+          if [ -z "$associated_workflows" ]; then
+            echo "No workflows found via check-runs. Falling back to workflow_runs..."
+            associated_workflows=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+              "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/actions/runs?pull_requests=$PR_NUMBER&per_page=100" | \
+              jq -r --arg exclude "$EXCLUDE_WORKFLOW" '
+                .workflow_runs[] |
+                select(.name != $exclude) |
+                .name' | sort | uniq)
           fi
 
-          echo "找到以下必需状态检查（工作流）："
-          echo "$required_checks"
+          # 检查是否获取到工作流名称
+          if [ -z "$associated_workflows" ]; then
+            echo "No associated workflows found for PR #$PR_NUMBER."
+          else
+            echo "Found the following associated workflows:"
+            echo "$associated_workflows"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ env.PR_NUMBER }}
+          REPO_OWNER: ${{ env.REPO_OWNER }}
+          REPO_NAME: ${{ env.REPO_NAME }}
+          EXCLUDE_WORKFLOW: ${{ env.EXCLUDE_WORKFLOW }}
 
-          # 将必需状态检查名称保存到 workflows.txt
-          echo "$required_checks" > workflows.txt
+      # 步骤 4：打印当前监控的工作流
+      - name: Print Monitored Workflows
+        run: |
+          echo "当前监控的工作流列表如下："
+          cat workflows.txt
+        shell: bash
 
-      # 步骤 4：轮询检查工作流状态
-      - name: Poll Workflow Status
+      # 步骤 5：轮询检查手动指定的工作流状态并发送通知
+      - name: Poll Workflow Status and Send Notifications
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ env.PR_NUMBER }}
@@ -82,13 +127,24 @@ jobs:
             all_success=true
             any_failure=false
 
-            # 读取 workflows.txt 中的必需工作流名称
+            # 读取 workflows.txt 中的手动指定工作流名称
             while IFS= read -r workflow; do
+              # 跳过空行
+              [[ -z "$workflow" ]] && continue
+
               echo "正在检查工作流 \"$workflow\" 的最新运行状态..."
 
               # 获取最新的 workflow run 状态
               workflow_run=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
                 "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/actions/runs?pull_requests=$PR_NUMBER&per_page=1&workflow_name=${workflow}")
+
+              # 确认是否有运行
+              run_count=$(echo "$workflow_run" | jq '.workflow_runs | length')
+              if [ "$run_count" -eq 0 ]; then
+                echo "工作流 \"$workflow\" 尚未启动运行。"
+                all_success=false
+                continue
+              fi
 
               # 提取结论状态，如果没有运行则为 "no_run"
               conclusion=$(echo "$workflow_run" | jq -r '.workflow_runs[0].conclusion // "no_run"')
@@ -113,7 +169,7 @@ jobs:
 
             # 根据当前工作流状态决定下一步动作
             if [ "$all_success" = true ]; then
-              echo "所有工作流都已成功完成。"
+              echo "所有监控的工作流都已成功完成。"
               break
             elif [ "$any_failure" = true ]; then
               echo "检测到至少一个工作流失败或需要人工干预。"
@@ -138,7 +194,7 @@ jobs:
               -d '{
                     "msgtype": "text",
                     "text": {
-                      "content": "仓库 '"$REPO_FULL_NAME"' 的构建和测试已成功完成。\n标题: '"$EVENT_TITLE"'\n请及时合入: '"$PR_URL"'"
+                      "content": "仓库 '"\"$REPO_FULL_NAME\""' 的构建和测试已成功完成。\n标题: '"\"$EVENT_TITLE\""'\n请及时合入: '"\"$PR_URL\"'"
                     }
                   }' \
               "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${WECHAT_WEBHOOK_KEY}"
@@ -148,7 +204,7 @@ jobs:
               -d '{
                     "msgtype": "text",
                     "text": {
-                      "content": "仓库 '"$REPO_FULL_NAME"' 的构建或测试失败。\n标题: '"$EVENT_TITLE"'\n请检查详细日志: '"$PR_URL"'"
+                      "content": "仓库 '"\"$REPO_FULL_NAME\""' 的构建或测试失败。\n标题: '"\"$EVENT_TITLE\""'\n请检查详细日志: '"\"$PR_URL\"'"
                     }
                   }' \
               "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${WECHAT_WEBHOOK_KEY}"
@@ -159,9 +215,10 @@ jobs:
               -d '{
                     "msgtype": "text",
                     "text": {
-                      "content": "仓库 '"$REPO_FULL_NAME"' 的构建和测试检查超时。\n标题: '"$EVENT_TITLE"'\n请手动检查相关工作流。"
+                      "content": "仓库 '"\"$REPO_FULL_NAME\""' 的构建和测试检查超时。\n标题: '"\"$EVENT_TITLE\""'\n请手动检查相关工作流。"
                     }
                   }' \
               "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${WECHAT_WEBHOOK_KEY}"
             exit 1
           fi
+        shell: bash
