@@ -1,0 +1,140 @@
+name: notify bot
+
+# 监听 PR 事件的触发类型，包括新建、同步和重新打开 PR
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  poll_workflows:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 步骤 1：初始化变量
+      - name: Initialize Variables
+        id: vars
+        run: |
+          # 获取 PR 编号
+          echo "PR_NUMBER=${{ github.event.pull_request.number }}" >> $GITHUB_ENV
+
+          # 获取仓库所有者和名称
+          echo "REPO_OWNER=${{ github.repository_owner }}" >> $GITHUB_ENV
+          echo "REPO_NAME=${GITHUB_REPOSITORY##*/}" >> $GITHUB_ENV
+
+          # 获取 PR 标题并设置为 event_title
+          echo "EVENT_TITLE=$(jq --raw-output .pull_request.title $GITHUB_EVENT_PATH)" >> $GITHUB_ENV
+
+          # 设置 Webhook URL（建议在仓库 Secrets 中存储）
+          echo "WEBHOOK_URL=${{ secrets.WECHAT_WEBHOOK_KEY }}" >> $GITHUB_ENV
+
+          # 设置轮询参数
+          echo "MAX_ATTEMPTS=30" >> $GITHUB_ENV            # 最大尝试次数
+          echo "SLEEP_DURATION=60" >> $GITHUB_ENV         # 每次轮询的等待时间（秒）
+
+          # 设置需要监控的工作流名称
+          echo "WORKFLOW_A_NAME=Workflow A" >> $GITHUB_ENV  # 请替换为你的工作流 A 的名称
+          echo "WORKFLOW_B_NAME=Workflow B" >> $GITHUB_ENV  # 请替换为你的工作流 B 的名称
+
+      # 步骤 2：安装必要的依赖工具
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq curl
+
+      # 步骤 3：轮询检查工作流状态
+      - name: Poll Workflow Status
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}       # GitHub 提供的令牌，用于 API 认证
+          PR_NUMBER: ${{ env.PR_NUMBER }}
+          REPO_OWNER: ${{ env.REPO_OWNER }}
+          REPO_NAME: ${{ env.REPO_NAME }}
+          WEBHOOK_URL: ${{ env.WEBHOOK_URL }}
+          MAX_ATTEMPTS: ${{ env.MAX_ATTEMPTS }}
+          SLEEP_DURATION: ${{ env.SLEEP_DURATION }}
+          WORKFLOW_A_NAME: ${{ env.WORKFLOW_A_NAME }}
+          WORKFLOW_B_NAME: ${{ env.WORKFLOW_B_NAME }}
+        run: |
+          attempt=0
+          success=false
+          failure=false
+
+          while [ $attempt -lt $MAX_ATTEMPTS ]; do
+            echo "检查工作流状态，尝试次数：$((attempt+1))/${MAX_ATTEMPTS}"
+
+            # 使用 GitHub API 获取与当前 PR 关联的 workflow runs
+            runs=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+              "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/actions/runs?pull_requests=$PR_NUMBER&per_page=100")
+
+            # 检查工作流 A 的状态
+            workflow_a_status=$(echo "$runs" | jq -r --arg NAME "$WORKFLOW_A_NAME" '
+              .workflow_runs[] | select(.name==$NAME) | .conclusion
+            ')
+
+            # 检查工作流 B 的状态
+            workflow_b_status=$(echo "$runs" | jq -r --arg NAME "$WORKFLOW_B_NAME" '
+              .workflow_runs[] | select(.name==$NAME) | .conclusion
+            ')
+
+            echo "Workflow A 状态: $workflow_a_status"
+            echo "Workflow B 状态: $workflow_b_status"
+
+            # 判断工作流 A 和 B 的状态
+            # 如果两者都成功，则标记为成功并退出循环
+            if [[ "$workflow_a_status" == "success" && "$workflow_b_status" == "success" ]]; then
+              echo "工作流 A 和 B 都已成功完成。"
+              success=true
+              break
+            fi
+
+            # 如果任一工作流失败，则标记为失败并退出循环
+            if [[ "$workflow_a_status" == "failure" || "$workflow_b_status" == "failure" ]]; then
+              echo "检测到工作流 A 或 B 失败。"
+              failure=true
+              break
+            fi
+
+            # 如果工作流尚未完成，则等待并继续轮询
+            echo "工作流 A 或 B 尚未完成。等待 $SLEEP_DURATION 秒后重试。"
+            sleep $SLEEP_DURATION
+            attempt=$((attempt+1))
+          done
+
+          # 根据轮询结果发送相应的通知
+          if [ "$success" = true ]; then
+            echo "发送成功完成的通知到 Webhook。"
+            REPO_NAME=${REPO_OWNER}/${REPO_NAME}
+            # 发送成功通知
+            curl -X POST -H "Content-Type: application/json" \
+              -d '{
+                    "msgtype": "text",
+                    "text": {
+                      "content": "仓库 '"$REPO_NAME"' 的构建和测试已成功完成。\n标题: '"$EVENT_TITLE"'\n请及时合入: https://github.com/'"$REPO_NAME"'/pulls"
+                    }
+                  }' \
+              "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${WEBHOOK_URL}"
+          elif [ "$failure" = true ]; then
+            echo "发送失败的通知到 Webhook。"
+            REPO_NAME=${REPO_OWNER}/${REPO_NAME}
+            # 发送失败通知
+            curl -X POST -H "Content-Type: application/json" \
+              -d '{
+                    "msgtype": "text",
+                    "text": {
+                      "content": "仓库 '"$REPO_NAME"' 的构建或测试失败。\n标题: '"$EVENT_TITLE"'\n请检查详细日志: https://github.com/'"$REPO_NAME"'/pulls"
+                    }
+                  }' \
+              "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${WEBHOOK_URL}"
+          else
+            echo "在最大尝试次数内未检测到工作流 A 和 B 的完成状态。"
+            # 可选：发送超时通知
+            REPO_NAME=${REPO_OWNER}/${REPO_NAME}
+            curl -X POST -H "Content-Type: application/json" \
+              -d '{
+                    "msgtype": "text",
+                    "text": {
+                      "content": "仓库 '"$REPO_NAME"' 的构建和测试检查超时。\n标题: '"$EVENT_TITLE"'\n请手动检查相关工作流。"
+                    }
+                  }' \
+              "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${WEBHOOK_URL}"
+            exit 1
+          fi
