@@ -40,6 +40,7 @@ jobs:
 
       # 步骤 3：获取并打印与 PR 关联的所有工作流
       - name: Fetch and Print Associated Workflows
+        id: fetch_workflows
         run: |
           echo "Fetching all workflows associated with PR #$PR_NUMBER on branch $HEAD_REF..."
 
@@ -73,6 +74,9 @@ jobs:
           REQUIRED_WORKFLOWS=$(IFS=','; echo "${filtered_workflows[*]}")
           echo "Filtered REQUIRED_WORKFLOWS: $REQUIRED_WORKFLOWS"
 
+          # 设置输出变量
+          echo "filtered_workflows=$REQUIRED_WORKFLOWS" >> $GITHUB_OUTPUT
+
       # 步骤 4：轮询检查指定工作流状态并发送通知
       - name: Poll Workflow Status and Send Notifications
         env:
@@ -83,7 +87,7 @@ jobs:
           WECHAT_WEBHOOK_KEY: ${{ env.WECHAT_WEBHOOK_KEY }}
           MAX_ATTEMPTS: ${{ env.MAX_ATTEMPTS }}
           SLEEP_DURATION: ${{ env.SLEEP_DURATION }}
-          REQUIRED_WORKFLOWS: ${{ env.REQUIRED_WORKFLOWS }}
+          REQUIRED_WORKFLOWS: ${{ steps.fetch_workflows.outputs.filtered_workflows }}
           EVENT_TITLE: ${{ env.EVENT_TITLE }}
           HEAD_REF: ${{ env.HEAD_REF }}
         run: |
@@ -139,24 +143,24 @@ jobs:
               echo "所有监控的工作流都已成功完成。"
               # 发送成功通知
               curl -X POST -H "Content-Type: application/json" \
-              -d '{
-                    "msgtype": "text",
-                    "text": {
-                      "content": "仓库 '`${REPO_NAME}`' 的构建和测试已成功完成。\n标题: '`${EVENT_TITLE}`'\n请及时合入: `https://github.com/'`${REPO_OWNER}`'/'`${REPO_NAME}`'/pull/'`${PR_NUMBER}`'`"
+              -d "{
+                    \"msgtype\": \"text\",
+                    \"text\": {
+                      \"content\": \"仓库 '${REPO_NAME}' 的构建和测试已成功完成。\n标题: '${EVENT_TITLE}'\n请及时合入: https://github.com/${REPO_OWNER}/${REPO_NAME}/pull/${PR_NUMBER}\"
                     }
-                  }' \
+                  }" \
               "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${WECHAT_WEBHOOK_KEY}"
               break
             elif [ "$any_failure" = true ]; then
               echo "检测到至少一个工作流失败或需要人工干预。"
               # 发送失败通知
               curl -X POST -H "Content-Type: application/json" \
-              -d '{
-                    "msgtype": "text",
-                    "text": {
-                      "content": "仓库 '`${REPO_NAME}`' 的构建和测试失败。\n标题: '`${EVENT_TITLE}`'\n请检查详细日志: `https://github.com/'`${REPO_OWNER}`'/'`${REPO_NAME}`'/pull/'`${PR_NUMBER}`'`"
+              -d "{
+                    \"msgtype\": \"text\",
+                    \"text\": {
+                      \"content\": \"仓库 '${REPO_NAME}' 的构建和测试失败。\n标题: '${EVENT_TITLE}'\n请检查详细日志: https://github.com/${REPO_OWNER}/${REPO_NAME}/pull/${PR_NUMBER}\"
                     }
-                  }' \
+                  }" \
               "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${WECHAT_WEBHOOK_KEY}"
               failure=true
               break
@@ -179,12 +183,12 @@ jobs:
             echo "在最大尝试次数内未检测到工作流的完成状态。"
             # 发送超时通知
             curl -X POST -H "Content-Type: application/json" \
-            -d '{
-                  "msgtype": "text",
-                  "text": {
-                    "content": "仓库 '`${REPO_NAME}`' 的构建和测试检查超时。\n标题: '`${EVENT_TITLE}`'\n请手动检查相关工作流。"
+            -d "{
+                  \"msgtype\": \"text\",
+                  \"text\": {
+                    \"content\": \"仓库 '${REPO_NAME}' 的构建和测试检查超时。\n标题: '${EVENT_TITLE}'\n请手动检查相关工作流。\"
                   }
-                }' \
+                }" \
             "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${WECHAT_WEBHOOK_KEY}"
             exit 1
           fi
