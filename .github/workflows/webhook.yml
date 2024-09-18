@@ -1,48 +1,48 @@
-name: notify
-
-on:
-  workflow_run:
-    workflows:
-      - autotest
-      - build
-    types:
-      - completed
-  repository_dispatch:
-    types: [ build_complete ]
-
-jobs:
-  notify:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Set up GitHub CLI
-        run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
-
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Check Workflows Status
-        id: check_status
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          autotest_status=$(gh run list --repo ${{ github.repository }} --workflow=autotest --branch=main --json conclusion -q '.[0].conclusion')
-          build_status=$(gh run list --repo ${{ github.repository }} --workflow=build --branch=main --json conclusion -q '.[0].conclusion')
-          echo "autotest=$autotest_status" >> $GITHUB_ENV
-          echo "build=$build_status" >> $GITHUB_ENV
-          echo "event_title=${{ github.event.client_payload.event_title }}" >> $GITHUB_ENV
-          cat $GITHUB_ENV
-      - name: Send Both Complete Notification
-        if: ${{ env.autotest == 'success' && env.build == 'success' }}
-        run: |
-          REPO_NAME=${{ github.repository }}
-          EVENT_TITLE=${{ env.event_title }}
-
-          curl -X POST -H "Content-Type: application/json" \
-          -d '{
-                "msgtype": "text",
-                "text": {
-                  "content": "仓库 '${REPO_NAME}' 的构建和测试已完成。\n标题: '${EVENT_TITLE}'\n请及时合入: 'https://github.com/${REPO_NAME}/pulls'"
-                }
-              }' \
-          https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${{ secrets.WECHAT_WEBHOOK_KEY }}
+#name: notify
+#
+#on:
+#  workflow_run:
+#    workflows:
+#      - autotest
+#      - build
+#    types:
+#      - completed
+#  repository_dispatch:
+#    types: [ build_complete ]
+#
+#jobs:
+#  notify:
+#    runs-on: ubuntu-latest
+#    steps:
+#      - name: Set up GitHub CLI
+#        run: |
+#          echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
+#
+#      - name: Checkout Repository
+#        uses: actions/checkout@v4
+#
+#      - name: Check Workflows Status
+#        id: check_status
+#        env:
+#          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+#        run: |
+#          autotest_status=$(gh run list --repo ${{ github.repository }} --workflow=autotest --branch=main --json conclusion -q '.[0].conclusion')
+#          build_status=$(gh run list --repo ${{ github.repository }} --workflow=build --branch=main --json conclusion -q '.[0].conclusion')
+#          echo "autotest=$autotest_status" >> $GITHUB_ENV
+#          echo "build=$build_status" >> $GITHUB_ENV
+#          echo "event_title=${{ github.event.client_payload.event_title }}" >> $GITHUB_ENV
+#          cat $GITHUB_ENV
+#      - name: Send Both Complete Notification
+#        if: ${{ env.autotest == 'success' && env.build == 'success' }}
+#        run: |
+#          REPO_NAME=${{ github.repository }}
+#          EVENT_TITLE=${{ env.event_title }}
+#
+#          curl -X POST -H "Content-Type: application/json" \
+#          -d '{
+#                "msgtype": "text",
+#                "text": {
+#                  "content": "仓库 '${REPO_NAME}' 的构建和测试已完成。\n标题: '${EVENT_TITLE}'\n请及时合入: 'https://github.com/${REPO_NAME}/pulls'"
+#                }
+#              }' \
+#          https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${{ secrets.WECHAT_WEBHOOK_KEY }}
