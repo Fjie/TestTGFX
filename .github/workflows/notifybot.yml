@@ -18,7 +18,7 @@ jobs:
       WECHAT_WEBHOOK_KEY: ${{ secrets.WECHAT_WEBHOOK_KEY }}
       MAX_ATTEMPTS: 30               # 最大尝试次数（例如 30 次 ~ 30 分钟）
       SLEEP_DURATION: 60            # 每次轮询的等待时间（秒）
-      REQUIRED_WORKFLOWS: "build,autotest" # 需要监控的工作流名称，以逗号分隔
+      REQUIRED_WORKFLOWS: "build,autotest,Tencent DevOps(OpenSource)" # 需要监控的工作流名称，以逗号分隔
       HEAD_REF: ${{ github.event.pull_request.head.ref }}
 
     steps:
@@ -61,6 +61,17 @@ jobs:
             echo "Associated workflows:"
             echo "$associated_workflows"
           fi
+      
+          # 从 REQUIRED_WORKFLOWS 中移除 associated_workflows 中没有的项
+          IFS=',' read -ra REQUIRED_WORKFLOWS_ARRAY <<< "$REQUIRED_WORKFLOWS"
+          filtered_workflows=()
+          for workflow in "${REQUIRED_WORKFLOWS_ARRAY[@]}"; do
+            if echo "$associated_workflows" | grep -q "$workflow"; then
+              filtered_workflows+=("$workflow")
+            fi
+          done
+          REQUIRED_WORKFLOWS=$(IFS=','; echo "${filtered_workflows[*]}")
+          echo "Filtered REQUIRED_WORKFLOWS: $REQUIRED_WORKFLOWS"
 
       # 步骤 4：轮询检查指定工作流状态并发送通知
       - name: Poll Workflow Status and Send Notifications
