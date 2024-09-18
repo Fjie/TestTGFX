@@ -1,4 +1,4 @@
-name: Coordinator Workflow
+name: notifybot
 
 # 监听 PR 事件的触发类型，包括新建、同步和重新打开 PR
 on:
@@ -24,7 +24,7 @@ jobs:
           # 获取 PR 标题并设置为 EVENT_TITLE
           echo "EVENT_TITLE=$(jq --raw-output .pull_request.title $GITHUB_EVENT_PATH)" >> $GITHUB_ENV
 
-          # 设置 Webhook Key（建议在仓库 Secrets 中存储完整的 Webhook URL 或仅存储 Key）
+          # 设置 Webhook Key（建议在仓库 Secrets 中存储完整的 Webhook Key）
           echo "WECHAT_WEBHOOK_KEY=${{ secrets.WECHAT_WEBHOOK_KEY }}" >> $GITHUB_ENV
 
           # 设置轮询参数
@@ -32,7 +32,7 @@ jobs:
           echo "SLEEP_DURATION=60" >> $GITHUB_ENV         # 每次轮询的等待时间（秒）
 
           # 设置需要排除的工作流名称（即协调工作流本身）
-          echo "EXCLUDE_WORKFLOW=Coordinator Workflow" >> $GITHUB_ENV
+          echo "EXCLUDE_WORKFLOW=notifybot" >> $GITHUB_ENV
 
       # 步骤 2：安装必要的依赖工具
       - name: Install Dependencies
@@ -55,16 +55,17 @@ jobs:
           attempt=0
           success=true  # 假设开始时所有工作流都成功
           failure=false
-          declare -A WORKFLOW_STATUS
 
-          # 获取所有与此 PR 关联的 workflow runs
+          echo "开始轮询检查 PR #$PR_NUMBER 的工作流状态..."
+
+          # 提取所有相关工作流的名称，排除协调工作流自身和以 '.' 开头的工作流
+          echo "正在获取与 PR #$PR_NUMBER 关联的所有工作流运行..."
           runs=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
             "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/actions/runs?pull_requests=$PR_NUMBER&per_page=100")
 
-          # 提取所有相关工作流的名称，排除协调工作流自身
           workflows=$(echo "$runs" | jq -r --arg EXCLUDE "$EXCLUDE_WORKFLOW" '
             .workflow_runs[] 
-            | select(.name != $EXCLUDE) 
+            | select(.name != $EXCLUDE and (.name | startswith(".") | not)) 
             | .name
             ' | sort | uniq)
 
@@ -80,34 +81,40 @@ jobs:
           # 将工作流名称保存到文件中，以便后续步骤使用
           echo "$workflows" > workflows.txt
 
+          # 轮询循环
           while [ $attempt -lt $MAX_ATTEMPTS ]; do
             echo "检查工作流状态，尝试次数：$((attempt+1))/${MAX_ATTEMPTS}"
 
-            # 初始化轮循时的标志
+            # 初始化轮询时的标志
             all_success=true
             any_failure=false
 
             # 读取工作流名称并检查每个工作流的状态
             while IFS= read -r workflow; do
+              echo "正在检查工作流 \"$workflow\" 的最新运行状态..."
+
               # 获取最新的 workflow run 状态
               workflow_run=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
                 "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/actions/runs?pull_requests=$PR_NUMBER&per_page=1&workflow_name=${workflow}")
 
-              conclusion=$(echo "$workflow_run" | jq -r '.workflow_runs[0].conclusion // "null"')
+              # 提取结论状态，如果没有运行则为 "no_run"
+              conclusion=$(echo "$workflow_run" | jq -r '.workflow_runs[0].conclusion // "no_run"')
 
               echo "Workflow \"$workflow\" 状态: $conclusion"
 
               if [[ "$conclusion" == "success" ]]; then
                 # 工作流成功，无需更改标志
-                :
-              elif [[ "$conclusion" == "failure" || "$conclusion" == "cancelled" ]]; then
+                echo "工作流 \"$workflow\" 已成功完成。"
+              elif [[ "$conclusion" == "failure" || "$conclusion" == "cancelled" || "$conclusion" == "timed_out" || "$conclusion" == "action_required" ]]; then
+                echo "工作流 \"$workflow\" 失败或需要操作。"
                 any_failure=true
                 all_success=false
-              elif [[ "$conclusion" == "null" ]]; then
-                # 工作流尚未完成
+              elif [[ "$conclusion" == "no_run" ]]; then
+                echo "工作流 \"$workflow\" 尚未启动运行。"
                 all_success=false
               else
-                # 其他结论状态，如 "timed_out", "action_required" 等
+                # 其他结论状态，如 "queued", "in_progress"
+                echo "工作流 \"$workflow\" 正在进行中或状态未知。"
                 all_success=false
               fi
             done < workflows.txt
@@ -117,7 +124,7 @@ jobs:
               echo "所有工作流都已成功完成。"
               break
             elif [ "$any_failure" = true ]; then
-              echo "检测到至少一个工作流失败。"
+              echo "检测到至少一个工作流失败或需要操作。"
               failure=true
               break
             else
@@ -130,7 +137,7 @@ jobs:
           # 准备发送通知的变量
           REPO_FULL_NAME="${REPO_OWNER}/${REPO_NAME}"
           PR_URL="https://github.com/${REPO_FULL_NAME}/pull/${PR_NUMBER}"
-          EVENT_TITLE="${{ env.EVENT_TITLE }}"
+          EVENT_TITLE="${EVENT_TITLE}"
 
           # 根据轮询结果发送相应的通知
           if [ "$all_success" = true ]; then
@@ -166,3 +173,13 @@ jobs:
               "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${WECHAT_WEBHOOK_KEY}"
             exit 1
           fi
+    ```
+
+### 详细说明与注释
+
+#### 1. 触发条件
+
+  ```yaml
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
