@@ -144,7 +144,7 @@ jobs:
             echo "发送成功完成的通知到 Webhook。"
             payload=$(jq -n \
               --arg msgtype "text" \
-              --arg content "仓库 \\\"$REPO_OWNER/$REPO_NAME\\\" 的构建和测试已成功完成。\\n标题: \\\"$EVENT_TITLE\\\"\\n请及时合入: \\\"$PR_URL\\\"" \
+              --arg content $'仓库 "'$REPO_OWNER'/'$REPO_NAME'" 的构建和测试已成功完成。\n标题: "'$EVENT_TITLE'"\n请及时合入: "'$PR_URL'"' \
               '{
                 msgtype: $msgtype,
                 text: {
@@ -159,7 +159,7 @@ jobs:
             echo "发送失败的通知到 Webhook。"
             payload=$(jq -n \
               --arg msgtype "text" \
-              --arg content "仓库 \\\"$REPO_OWNER/$REPO_NAME\\\" 的构建和测试失败。\\n标题: \\\"$EVENT_TITLE\\\"\\n请检查详细日志: \\\"$PR_URL\\\"" \
+              --arg content $'仓库 "'$REPO_OWNER'/'$REPO_NAME'" 的构建和测试失败。\n标题: "'$EVENT_TITLE'"\n请检查详细日志: "'$PR_URL'"' \
               '{
                 msgtype: $msgtype,
                 text: {
@@ -175,7 +175,7 @@ jobs:
             # 可选：发送超时通知
             payload=$(jq -n \
               --arg msgtype "text" \
-              --arg content "仓库 \\\"$REPO_OWNER/$REPO_NAME\\\" 的构建和测试检查超时。\\n标题: \\\"$EVENT_TITLE\\\"\\n请手动检查相关工作流。" \
+              --arg content $'仓库 "'$REPO_OWNER'/'$REPO_NAME'" 的构建和测试检查超时。\n标题: "'$EVENT_TITLE'"\n请手动检查相关工作流。' \
               '{
                 msgtype: $msgtype,
                 text: {
