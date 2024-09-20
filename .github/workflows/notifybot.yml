@@ -90,7 +90,7 @@ jobs:
           -d "{
                 \"msgtype\": \"text\",
                 \"text\": {
-                  \"content\": \"仓库 ${REPO_NAME} 有新的 PR 需要评审。\n标题: ${EVENT_TITLE}\n请查看: https://github.com/${REPO_OWNER}/${REPO_NAME}/pull/${PR_NUMBER}\"
+                  \"content\": \"仓库 ${REPO_NAME} 有新的的 PR #${PR_NUMBER}：${EVENT_TITLE} 需要评审。\n请查看: https://github.com/${REPO_OWNER}/${REPO_NAME}/pull/${PR_NUMBER}\"
                 }
               }" \
           "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${WECHAT_WEBHOOK_KEY}"
