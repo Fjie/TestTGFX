@@ -14,14 +14,25 @@ jobs:
       - name: Initialize Variables
         id: vars
         run: |
+          # 获取 PR 编号
           echo "PR_NUMBER=${{ github.event.pull_request.number }}" >> $GITHUB_ENV
+
+          # 获取仓库所有者和名称
           echo "REPO_OWNER=${{ github.repository_owner }}" >> $GITHUB_ENV
           echo "REPO_NAME=${GITHUB_REPOSITORY##*/}" >> $GITHUB_ENV
-          echo "TARGET_BRANCH=${{ github.event.pull_request.base.ref }}" >> $GITHUB_ENV
+
+          # 获取 PR 标题并设置为 EVENT_TITLE
           echo "EVENT_TITLE=$(jq --raw-output .pull_request.title $GITHUB_EVENT_PATH)" >> $GITHUB_ENV
+
+          # 设置 Webhook Key（建议在仓库 Secrets 中存储完整的 Webhook Key）
           echo "WECHAT_WEBHOOK_KEY=${{ secrets.WECHAT_WEBHOOK_KEY }}" >> $GITHUB_ENV
-          echo "MAX_ATTEMPTS=30" >> $GITHUB_ENV            # 最大尝试次数，例如 30 次 ~ 30 分钟
+
+          # 设置轮询参数
+          echo "MAX_ATTEMPTS=30" >> $GITHUB_ENV            # 最大尝试次数（例如 30 次 ~ 30 分钟）
           echo "SLEEP_DURATION=60" >> $GITHUB_ENV         # 每次轮询的等待时间（秒）
+
+          # 设置需要排除的工作流名称（即协调工作流本身）
+          echo "EXCLUDE_WORKFLOW=notifybot" >> $GITHUB_ENV
 
       # 步骤 2：安装必要的依赖工具
       - name: Install Dependencies
@@ -29,36 +40,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y jq curl
 
-      # 步骤 3：获取分支保护规则中的必需状态检查
-      - name: Fetch Required Status Checks
-        id: fetch_checks
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO_OWNER: ${{ env.REPO_OWNER }}
-          REPO_NAME: ${{ env.REPO_NAME }}
-          TARGET_BRANCH: ${{ env.TARGET_BRANCH }}
-        run: |
-          echo "Fetching branch protection for $REPO_OWNER/$REPO_NAME:$TARGET_BRANCH..."
-          
-          # 获取分支保护规则
-          protection_response=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-            "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/branches/$TARGET_BRANCH/protection")
-
-          # 提取必需的状态检查名称
-          required_checks=$(echo "$protection_response" | jq -r '.required_status_checks.contexts // empty')
-
-          if [ -z "$required_checks" ]; then
-            echo "未找到分支保护规则中的必需状态检查。请确保分支保护规则配置正确。"
-            exit 1
-          fi
-
-          echo "找到以下必需状态检查（工作流）："
-          echo "$required_checks"
-
-          # 将必需状态检查名称保存到 workflows.txt
-          echo "$required_checks" > workflows.txt
-
-      # 步骤 4：轮询检查工作流状态
+      # 步骤 3：轮询检查工作流状态
       - name: Poll Workflow Status
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -68,21 +50,46 @@ jobs:
           WECHAT_WEBHOOK_KEY: ${{ env.WECHAT_WEBHOOK_KEY }}
           MAX_ATTEMPTS: ${{ env.MAX_ATTEMPTS }}
           SLEEP_DURATION: ${{ env.SLEEP_DURATION }}
+          EXCLUDE_WORKFLOW: ${{ env.EXCLUDE_WORKFLOW }}
         run: |
           attempt=0
-          success=true
+          success=true  # 假设开始时所有工作流都成功
           failure=false
 
           echo "开始轮询检查 PR #$PR_NUMBER 的工作流状态..."
 
+          # 提取所有相关工作流的名称，排除协调工作流自身和以 '.' 开头的工作流
+          echo "正在获取与 PR #$PR_NUMBER 关联的所有工作流运行..."
+          runs=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+            "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/actions/runs?pull_requests=$PR_NUMBER&per_page=100")
+
+          workflows=$(echo "$runs" | jq -r --arg EXCLUDE "$EXCLUDE_WORKFLOW" '
+            .workflow_runs[] 
+            | select(.name != $EXCLUDE and (.name | startswith(".") | not)) 
+            | .name
+            ' | sort | uniq)
+
+          # 如果没有获取到任何工作流名称，提示用户手动指定
+          if [ -z "$workflows" ]; then
+            echo "未能自动检测到与 PR 关联的工作流名称。请手动指定工作流名称。"
+            exit 1
+          fi
+
+          echo "自动检测到以下工作流需要监控："
+          echo "$workflows"
+
+          # 将工作流名称保存到文件中，以便后续步骤使用
+          echo "$workflows" > workflows.txt
+
+          # 轮询循环
           while [ $attempt -lt $MAX_ATTEMPTS ]; do
             echo "检查工作流状态，尝试次数：$((attempt+1))/${MAX_ATTEMPTS}"
 
-            # 初始化标志
+            # 初始化轮询时的标志
             all_success=true
             any_failure=false
 
-            # 读取 workflows.txt 中的必需工作流名称
+            # 读取工作流名称并检查每个工作流的状态
             while IFS= read -r workflow; do
               echo "正在检查工作流 \"$workflow\" 的最新运行状态..."
 
@@ -96,9 +103,10 @@ jobs:
               echo "Workflow \"$workflow\" 状态: $conclusion"
 
               if [[ "$conclusion" == "success" ]]; then
+                # 工作流成功，无需更改标志
                 echo "工作流 \"$workflow\" 已成功完成。"
               elif [[ "$conclusion" == "failure" || "$conclusion" == "cancelled" || "$conclusion" == "timed_out" || "$conclusion" == "action_required" ]]; then
-                echo "工作流 \"$workflow\" 失败或需要人工干预。"
+                echo "工作流 \"$workflow\" 失败或需要操作。"
                 any_failure=true
                 all_success=false
               elif [[ "$conclusion" == "no_run" ]]; then
@@ -116,7 +124,7 @@ jobs:
               echo "所有工作流都已成功完成。"
               break
             elif [ "$any_failure" = true ]; then
-              echo "检测到至少一个工作流失败或需要人工干预。"
+              echo "检测到至少一个工作流失败或需要操作。"
               failure=true
               break
             else
@@ -165,3 +173,4 @@ jobs:
               "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${WECHAT_WEBHOOK_KEY}"
             exit 1
           fi
+
