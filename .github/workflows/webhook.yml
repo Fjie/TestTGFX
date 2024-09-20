@@ -16,16 +16,13 @@ jobs:
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
 
-      - name: Checkout Repository
-        uses: actions/checkout@v2
-
       - name: Check Workflows Status
         id: check_status
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          autotest_status=$(gh run list --repo ${{ github.repository }} --workflow=autotest --branch=main --json conclusion -q '.[0].conclusion')
-          build_status=$(gh run list --repo ${{ github.repository }} --workflow=build --branch=main --json conclusion -q '.[0].conclusion')
+          autotest_status=$(gh run list --workflow=autotest --branch=main --json conclusion -q '.[0].conclusion')
+          build_status=$(gh run list --workflow=build --branch=main --json conclusion -q '.[0].conclusion')
           echo "autotest=$autotest_status" >> $GITHUB_ENV
           echo "build=$build_status" >> $GITHUB_ENV
 
