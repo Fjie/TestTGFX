@@ -33,12 +33,13 @@ jobs:
         if: ${{ env.autotest == 'success' && env.build == 'success' }}
         run: |
           REPO_NAME=${{ github.repository }}
-          PR_URL=${{ github.event.pull_request.html_url }}
+          COMMIT_SHA=${{ github.sha }}
+          COMMIT_URL="https://github.com/${REPO_NAME}/commit/${COMMIT_SHA}"
           curl -X POST -H "Content-Type: application/json" \
           -d '{
                 "msgtype": "text",
                 "text": {
-                  "content": "仓库 '${REPO_NAME}' 的构建和测试已完成。\n查看PR列表: '${PR_URL}'"
+                  "content": "仓库 '${REPO_NAME}' 的构建和测试已完成。\n查看提交: '${COMMIT_URL}'"
                 }
               }' \
           https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${{ secrets.WECHAT_WEBHOOK_KEY }}
