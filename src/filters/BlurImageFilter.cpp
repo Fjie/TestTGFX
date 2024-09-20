@@ -99,9 +99,8 @@ void BlurImageFilter::draw(std::shared_ptr<RenderTargetProxy> renderTarget,
   opContext.fillWithFP(std::move(blurProcessor), localMatrix);
 }
 
-Rect BlurImageFilter::onFilterBounds(const Rect& srcRect) const {
-  auto mul = static_cast<float>(std::pow(2, iteration)) / downScaling;
-  return srcRect.makeOutset(blurOffset.x * mul, blurOffset.y * mul);
+  Rect BlurImageFilter::onFilterBounds(const Rect&     srcRect) const {
+    auto mul = static_cast<float>(std::pow(2, iteration)) / downScaling; return        srcRect.makeOutset(blurOffset.x * mul, blurOffset.y * mul);
 }
 
 std::shared_ptr<TextureProxy> BlurImageFilter::onFilterImage(Context* context,
