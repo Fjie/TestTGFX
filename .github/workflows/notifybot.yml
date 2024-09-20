@@ -173,4 +173,13 @@ jobs:
               "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${WECHAT_WEBHOOK_KEY}"
             exit 1
           fi
+    ```
 
+### 详细说明与注释
+
+#### 1. 触发条件
+
+  ```yaml
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
