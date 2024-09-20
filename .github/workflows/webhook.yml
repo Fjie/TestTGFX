@@ -7,8 +7,6 @@ on:
       - build
     types:
       - completed
-  repository_dispatch:
-    types: [ build_complete ]
 
 jobs:
   notify:
@@ -19,7 +17,7 @@ jobs:
           echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
 
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v2
 
       - name: Check Workflows Status
         id: check_status
