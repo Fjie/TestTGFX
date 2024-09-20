@@ -148,7 +148,7 @@ jobs:
                       "content": "仓库 '"\"$REPO_OWNER/$REPO_NAME\""' 的构建和测试已成功完成。\n标题: '"\"$EVENT_TITLE\""'\n请及时合入: '"\"$PR_URL\"'"
                     }
                   }' \
-              https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${{ secrets.WECHAT_WEBHOOK_KEY }}
+              "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${{ secrets.WECHAT_WEBHOOK_KEY }}"
           elif [ "$failure" = true ]; then
             echo "发送失败的通知到 Webhook。"
             curl -X POST -H "Content-Type: application/json" \
@@ -158,7 +158,7 @@ jobs:
                       "content": "仓库 '"\"$REPO_OWNER/$REPO_NAME\""' 的构建或测试失败。\n标题: '"\"$EVENT_TITLE\""'\n请检查详细日志: '"\"$PR_URL\"'"
                     }
                   }' \
-              https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${{ secrets.WECHAT_WEBHOOK_KEY }}
+              "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${{ secrets.WECHAT_WEBHOOK_KEY }}"
           else
             echo "在最大尝试次数内未检测到工作流的完成状态。"
             # 可选：发送超时通知
@@ -169,7 +169,7 @@ jobs:
                       "content": "仓库 '"\"$REPO_OWNER/$REPO_NAME\""' 的构建和测试检查超时。\n标题: '"\"$EVENT_TITLE\""'\n请手动检查相关工作流。"
                     }
                   }' \
-              https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${{ secrets.WECHAT_WEBHOOK_KEY }}
+              "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${{ secrets.WECHAT_WEBHOOK_KEY }}"
             exit 1
           fi
         shell: bash
