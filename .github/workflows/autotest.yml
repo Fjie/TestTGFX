@@ -10,12 +10,6 @@ jobs:
   mac:
     runs-on: macos-13
     steps:
-      - name: Check Out Repo
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          lfs: true
-
       - name: Execute Empty Task 1
         run: echo "Executing Task 1" && sleep 1
 
