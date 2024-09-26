@@ -51,7 +51,7 @@ TGFX utilizes the **C++17** features for development. Below are the minimum tool
 
 - Xcode 11.0+
 - GCC 9.0+
-- Visual Studio 2019+
+- Visual Studio 2019+ xxx
 - NodeJS 14.14.0+
 - Ninja 1.9.0+
 - CMake 3.13.0+
