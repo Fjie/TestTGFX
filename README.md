@@ -173,7 +173,7 @@ Additionally, you can pass cmake options using the `-D` option. For instance, if
 generate a project with webp encoding support, please run the following command:
 
 ```
-./gen_ios -DTGFX_USE_WEBP_ENCODE=ON
+./gen_ios -DTGFX_USE_WEBP_ENCODE=ON xxx
 ```
 
 Finally, open XCode and launch the `ios/Hello2D.xcworkspace` to build and run the demo project.
