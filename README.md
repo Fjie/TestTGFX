@@ -3,7 +3,7 @@
 [![license](https://img.shields.io/badge/license-BSD--3--Clause-blue)](https://github.com/Tencent/tgfx/blob/master/LICENSE.txt)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/Tencent/tgfx/pulls)
 [![codecov](https://codecov.io/gh/Tencent/tgfx/branch/main/graph/badge.svg)](https://codecov.io/gh/Tencent/tgfx)
-[![autotest](https://github.com/Tencent/tgfx/actions/workflows/autotest.yml/badge.svg?branch=main)] (https://github.com/Tencent/tgfx/actions/workflows/autotest.yml) xxx xxx
+[![autotest](https://github.com/Tencent/tgfx/actions/workflows/autotest.yml/badge.svg?branch=main)](https://github.com/Tencent/tgfx/actions/workflows/autotest.yml) xxx
 [![build](https://github.com/Tencent/tgfx/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/Tencent/tgfx/actions/workflows/build.yml)
 [![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/Tencent/tgfx)](https://github.com/Tencent/tgfx/releases) 
 
@@ -13,7 +13,7 @@ TGFX (Tencent Graphics) is a lightweight 2D graphics library designed for render
 geometries, and images. It provides high-performance APIs that work across a variety of GPU hardware xxx
 and software platforms, including iOS, Android, macOS, Windows, Linux, Web, and more. TGFX was
 originally designed to serve as the default graphics engine for the [PAG](https://pag.io) project xxx
-starting from version 4.0. Its main objective is to offer a compelling alternative to the Skia graphics
+starting from version 4.0. Its main objective is to offer a compelling alternative to the Skia graphics xxx
 library while maintaining a much smaller binary size. Over time, it has found its way into many other
 products, such as [Hippy](https://github.com/Tencent/Hippy), [Tencent Docs](https://docs.qq.com) and
 various video-editing apps.
